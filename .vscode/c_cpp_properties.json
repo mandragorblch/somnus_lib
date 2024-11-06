@@ -1,0 +1,64 @@
+{
+  "configurations": [
+    {
+      "name": "linux-gcc-x64",
+      "includePath": [
+        "${workspaceFolder}/**"
+      ],
+      "defines": [
+        "_DEBUG",
+        "UNICODE",
+        "_UNICODE"
+      ],
+      "windowsSdkVersion": "10.0.22621.0",
+      "compilerPath": "/usr/bin/gcc",
+      "cStandard": "${default}",
+      "cppStandard": "${default}",
+      "intelliSenseMode": "linux-gcc-x64"
+    },
+    {
+      "name": "Win64",
+      "includePath": [
+        "f:/a-files/my_sheesh/prog/cpp/**",
+        "F:/vcpkg/installed/x64-windows/include",
+        "F:/vcpkg/installed/x86-windows/include"
+      ],
+      "defines": [
+        "_DEBUG",
+        "UNICODE",
+        "_UNICODE"
+      ],
+      "windowsSdkVersion": "10.0.22621.0",
+      "compilerPath": "F:/msys64/ucrt64/bin/g++.exe",
+      "cStandard": "c23",
+      "cppStandard": "c++23",
+      "intelliSenseMode": "windows-gcc-x64",
+      "mergeConfigurations": false,
+      "browse": {
+        "path": [
+          "f:/a-files/my_sheesh/prog/cpp/**",
+          "F:/vcpkg/installed/x64-windows/include",
+          "F:/vcpkg/installed/x86-windows/include",
+          "${workspaceFolder}"
+        ],
+        "limitSymbolsToIncludedHeaders": true
+      }
+    },
+    {
+      "name": "Lin64",
+      "includePath": [],
+      "compilerPath": "/usr/bin/gcc",
+      "cStandard": "c23",
+      "cppStandard": "c++23",
+      "intelliSenseMode": "linux-gcc-x64",
+      "mergeConfigurations": false,
+      "browse": {
+        "path": [
+          "${workspaceFolder}"
+        ],
+        "limitSymbolsToIncludedHeaders": true
+      }
+    }
+  ],
+  "version": 4
+}

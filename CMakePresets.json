@@ -1,0 +1,15 @@
+{
+    "version": 3,
+    "configurePresets": [
+        {
+            "name": "default",
+            "description": "Default settings for cmake",
+            "hidden": false,
+            "generator": "MinGW Makefiles",
+            "binaryDir": "${workspaceFolder}/build",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE":"Debug"
+            }
+        }
+    ]
+}

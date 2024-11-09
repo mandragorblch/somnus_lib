@@ -8,7 +8,7 @@ int main() {
 	std::string ref_str = str.data();
 
 	String str1("asdfg");
-	str1.assign("1231241241543523543");
+	str1.assign("");
 
 	std::cout << str << '\n' << str1;
 

@@ -4,11 +4,11 @@
 
 int main() {
 	using namespace smns;
-	String str("01234");
+	String str("0123456789");
 	std::string ref_str = str.data();
 
 	String str1("asdfg");
-	str.assign(str1);
+	str1.assign("1231241241543523543");
 
 	std::cout << str << '\n' << str1;
 

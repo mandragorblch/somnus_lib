@@ -69,22 +69,44 @@ namespace smns {
             _pointer = new char[cap];
         }
 
-        memcpy(_pointer, other._pointer, sz + 1);
+        memcpy(_pointer, other._pointer, sz);
+        _pointer[sz] = '\0';
 
         return *this;
     }
 
-    // String& String::assign(const String& other, size_t pos, size_t count) {
-    //   // TODO: insert return statement here
-    // }
+    String& String::assign(const String& other, size_t pos, size_t count) {
+        if(pos > other.sz) throw std::out_of_range("out of range");
+        if(count == npos) count = other.sz - pos;
+        sz = count;
+        if(sz >= cap) {
+            cap = sz + 1;
+            delete[] _pointer;
+            _pointer = new char[cap];
+        }
 
-    // String& String::assign(const char* c_str, size_t count) {
-    //   // TODO: insert return statement here
-    // }
+        memcpy(_pointer, other._pointer + pos, count);
+        _pointer[count] = '\0';
+        return *this;
+    }
 
-    // String& String::assign(const char* c_str) {
-    //   // TODO: insert return statement here
-    // }
+    String& String::assign(const char* c_str, size_t count) {
+        sz = count;
+        if(sz >= cap) {
+            cap = sz + 1;
+            delete[] _pointer;
+            _pointer = new char[cap];
+        }
+
+        memcpy(_pointer, c_str, count);
+        _pointer[count] = '\0';
+        return *this;
+    }
+
+    String& String::assign(const char* c_str) {
+        this->assign(c_str, std::strlen(c_str));
+        return *this;
+    }
 
     char& String::operator[](size_t index) {
         return _pointer[index];
@@ -95,9 +117,7 @@ namespace smns {
     }
 
     char& String::at(size_t index) {
-        if(index >= sz) {
-            throw std::out_of_range("out of range");
-        }
+        if(index >= sz) throw std::out_of_range("out of range");
         return _pointer[index];
     }
 

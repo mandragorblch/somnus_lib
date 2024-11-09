@@ -1,11 +1,17 @@
-cmake_minimum_required(VERSION 3.10)
-project(somnus_lib VERSION 0.0.1 LANGUAGES C CXX)
+cmake_minimum_required(VERSION 3.21)
+project(somnus_lib VERSION 3.21 LANGUAGES C CXX)
 
 include(CTest)
 enable_testing()
 
 file(GLOB_RECURSE SOURCES "${CMAKE_SOURCE_DIR}/src/*.cpp")
 
-add_executable(main_test ${SOURCES})
+add_executable(${FILENAME} ${SOURCES})
 
-target_compile_options(main_test PRIVATE -std=c++23 -Wall -Wextra -pedantic -Werror -O0 -ggdb -g)
+if(CUSTOM_BUILD_TYPE STREQUAL "acrt")
+    target_compile_options(${FILENAME} PRIVATE -std=c++23 -Wall -Wextra -pedantic -Werror -Og -ggdb -g)  
+elseif(CUSTOM_BUILD_TYPE STREQUAL "dbg")
+    target_compile_options(${FILENAME} PRIVATE -std=c++23 -Wall -Wextra -pedantic -Og -ggdb -g)  
+elseif(CUSTOM_BUILD_TYPE STREQUAL "rls")
+    target_compile_options(${FILENAME} PRIVATE -std=c++23 -O3 -flto -s -static)  
+endif()

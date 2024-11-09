@@ -1,14 +1,42 @@
 {
     "version": 3,
+    "cmakeMinimumRequired": {
+        "major": 3,
+        "minor": 21,
+        "patch": 0
+    },
     "configurePresets": [
         {
-            "name": "default",
-            "description": "Default settings for cmake",
+            "name": "accurate",
+            "description": "build with all possible checks",
             "hidden": false,
             "generator": "MinGW Makefiles",
-            "binaryDir": "${workspaceFolder}/build",
+            "binaryDir": "build/acrt",
             "cacheVariables": {
-                "CMAKE_BUILD_TYPE":"Debug"
+                "CUSTOM_BUILD_TYPE": "acrt",
+                "FILENAME": "main"
+            }
+        },
+        {
+            "name": "debug",
+            "description": "default debug configuration",
+            "hidden": false,
+            "generator": "MinGW Makefiles",
+            "binaryDir": "build/dbg",
+            "cacheVariables": {
+                "CUSTOM_BUILD_TYPE": "dbg",
+                "FILENAME": "main"
+            }
+        },
+        {
+            "name": "release",
+            "description": "build with all possible optimizations",
+            "hidden": false,
+            "generator": "MinGW Makefiles",
+            "binaryDir": "build/rls",
+            "cacheVariables": {
+                "CUSTOM_BUILD_TYPE": "rls",
+                "FILENAME": "main"
             }
         }
     ]

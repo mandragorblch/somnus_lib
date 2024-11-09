@@ -2,7 +2,7 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "rls active file",
+      "name": "rls build",
       "type": "cppdbg",
       "request": "launch",
       "program": "${cwd}\\build\\rls\\main.exe",
@@ -25,13 +25,13 @@
           "ignoreFailures": true
         }
       ],
-      "preLaunchTask": "g++ release build"
+      "preLaunchTask": "release cmake build"
     },
     {
-      "name": "dbg active file",
+      "name": "dbg build",
       "type": "cppdbg",
       "request": "launch",
-      "program": "${fileDirname}\\dbg\\${fileBasenameNoExtension}.exe",
+      "program": "${cwd}\\build\\dbg\\main.exe",
       "args": [],
       "stopAtEntry": false,
       "cwd": "${fileDirname}",
@@ -51,13 +51,13 @@
           "ignoreFailures": true
         }
       ],
-      "preLaunchTask": "g++ debug build"
+      "preLaunchTask": "debug cmake build"
     },
     {
-      "name": "accurate build active file",
+      "name": "acrt build",
       "type": "cppdbg",
       "request": "launch",
-      "program": "${fileDirname}\\acrt\\${fileBasenameNoExtension}.exe",
+      "program": "${cwd}\\build\\acrt\\main.exe",
       "args": [],
       "stopAtEntry": false,
       "cwd": "${fileDirname}",
@@ -77,33 +77,7 @@
           "ignoreFailures": true
         }
       ],
-      "preLaunchTask": "g++ accurate build"
-    },
-    {
-      "name": "cmake build",
-      "type": "cppdbg",
-      "request": "launch",
-      "program": "${cwd}\\build\\main_test.exe",
-      "args": [],
-      "stopAtEntry": false,
-      "cwd": "${fileDirname}",
-      "environment": [],
-      "externalConsole": true,
-      "MIMode": "gdb",
-      "miDebuggerPath": "gdb",
-      "setupCommands": [
-        {
-          "description": "Enable pretty-printing for gdb",
-          "text": "-enable-pretty-printing",
-          "ignoreFailures": true
-        },
-        {
-          "description": "Set Disassembly Flavor to Intel",
-          "text": "-gdb-set disassembly-flavor intel",
-          "ignoreFailures": true
-        }
-      ],
-      "preLaunchTask": "cmake build"
+      "preLaunchTask": "accurate cmake build"
     }
   ]
 }

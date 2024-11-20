@@ -1,10 +1,6 @@
 #include "string.h"
 
 namespace smns {
-    String::String() {
-
-    }
-    
     String::String(size_t sz)				
             : sz(sz)
             , cap(sz + 1)
@@ -35,9 +31,9 @@ namespace smns {
     String::String(const String &other) : String(other.sz) {
         memcpy(_pointer, other._pointer, sz + 1);
     }
-    //copy-and-swap idiom
+
     String& String::operator=(String other) {
-        this->swap(other);
+        this->swap(other);    //copy-and-swap idiom
         return *this;
     }
 
@@ -128,8 +124,40 @@ namespace smns {
         return _pointer[index];
     }
 
-    size_t String::size() const {
-        return sz;
+    bool String::empty() const { return sz == 0; }
+
+    size_t String::size() const { return sz; }
+
+    size_t String::length() const { return sz; }
+
+    size_t String::max_size() const { return std::numeric_limits<size_t>::max(); }
+
+    void String::reserve(size_t new_cap) {
+        if(new_cap <= cap) return;
+
+        cap = new_cap;
+        char* new_pointer = new char[cap];
+
+        memcpy(new_pointer, _pointer, sz);
+        new_pointer[sz] = '\0';
+
+        std::swap(_pointer, new_pointer);
+        delete[] new_pointer;
+    }
+
+    size_t String::capacity() const { return cap; }
+
+    void String::shrink_to_fit() {
+        if(cap == sz + 1) return;
+
+        cap = sz + 1;
+        char* new_pointer = new char[cap];
+
+        memcpy(new_pointer, _pointer, sz);
+        new_pointer[sz] = '\0';
+
+        std::swap(_pointer, new_pointer);
+        delete[] new_pointer;
     }
 
     const char *String::data() const {
@@ -164,6 +192,72 @@ namespace smns {
         return _pointer;
     }
 
+    void String::clear() {
+        sz = 0;
+        *_pointer = '\0';
+    }
+
+    String& String::insert(size_t index, size_t count, char ch) {
+        if(index > sz) throw std::out_of_range("out of range");
+        sz += count;
+        if(cap < sz + 1) {
+            cap = sz + 1;
+            char* new_pointer = new char[cap];
+            memcpy(new_pointer, _pointer, index);
+            memset(new_pointer + index, ch, count);
+            memcpy(new_pointer + index + count, _pointer + index, sz - count - index);
+            new_pointer[sz] = '\0';
+            std::swap(_pointer, new_pointer);
+            delete[] new_pointer;
+            
+        } else {
+            for (size_t i = sz; i > index; --i)
+            {
+                _pointer[i] = _pointer[i - count];
+            }
+            
+            memset(_pointer + index, ch, count);
+        }
+        return *this;
+    }
+
+    String& String::insert(size_t index, const char* c_str) {
+        this->insert(index, c_str, std::strlen(c_str));
+        return *this;
+    }
+
+    String& String::insert(size_t index, const char* c_str, size_t count) {
+        if(index > sz) throw std::out_of_range("out of range");
+        sz += count;
+        if(cap < sz + 1) {
+            cap = sz + 1;
+            char* new_pointer = new char[cap];
+            memcpy(new_pointer, _pointer, index);
+            memcpy(new_pointer + index, c_str, count);
+            memcpy(new_pointer + index + count, _pointer + index, sz - count - index);
+            new_pointer[sz] = '\0';
+            std::swap(_pointer, new_pointer);
+            delete[] new_pointer;
+        } else {
+            //move data after index to the right. memmove is necessary, because overlap may occur
+            memmove(_pointer + index + count, _pointer + index, (sz - count - index));
+            //copy data from src. memmove is necessary, because overlap may occur
+            memmove(_pointer + index, c_str, count);
+            _pointer[sz] = '\0';
+        }
+        return *this;
+    }
+
+    String& String::insert(size_t index, const String& other) {
+        this->insert(index, other.c_str(), other.sz);
+        return *this;
+    }
+
+    // String& String::insert(size_t index, const String& other, size_t s_index, size_t count) {
+    //     this->insert(index, other.c_str(), other.sz);
+    //     return *this;
+    // }
+
     String::operator char*() {
         return _pointer;
     }
@@ -183,7 +277,7 @@ namespace smns {
    }
 }
 
-std::ostream &operator<<(std::ostream &out, const smns::String &str) {
+std::ostream& operator<<(std::ostream& out, const smns::String& str) {
 	out << str._pointer;
 	return out;
 }

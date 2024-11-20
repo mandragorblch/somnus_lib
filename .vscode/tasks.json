@@ -3,7 +3,7 @@
         {
             "label": "accurate cmake build",
             "type": "shell",
-            "command": "cmake --preset accurate;cmake --build build/acrt",
+            "command": "cmake --preset accurate; cmake --build build/acrt --verbose",
             "problemMatcher": [
                 "$gcc"
             ],

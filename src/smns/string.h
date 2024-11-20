@@ -19,7 +19,7 @@ namespace smns{
 		char* _pointer = nullptr;
 		static const size_t npos = -1;
 	public:
-		String();
+		String() = delete;
 
 		explicit String(size_t sz);
 
@@ -73,16 +73,40 @@ namespace smns{
 
 		const char& front() const;
 
+//--------------------------------------------------------capacity--------------------------------------------------------
+		bool empty() const;
+
 		size_t size() const;
+
+		size_t length() const;
+
+		size_t max_size() const;
+
+		void reserve(size_t new_cap);
+
+		size_t capacity() const;
+
+		void shrink_to_fit();
+
+//--------------------------------------------------------modifiers--------------------------------------------------------
+		void clear();
+
+		String& insert(size_t index, size_t count, char ch);
+
+		String& insert(size_t index, const char* c_str);
+
+		String& insert(size_t index, const char* c_str, size_t count);
+
+		String& insert(size_t index, const String& other);
+
+		String& insert(size_t index, const String& other, size_t s_index, size_t count = npos);
 
 		explicit operator const char*();
 
 		explicit operator char*();
 
-
 		~String();//3 -> Rule of Three
 
-		friend int ::main();
 		friend std::ostream& ::operator<<(std::ostream& out, const smns::String& str);
 	};
 

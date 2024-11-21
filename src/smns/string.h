@@ -89,6 +89,7 @@ namespace smns{
 		void shrink_to_fit();
 
 //--------------------------------------------------------modifiers--------------------------------------------------------
+
 		void clear();
 
 		String& insert(size_t index, size_t count, char ch);
@@ -100,6 +101,12 @@ namespace smns{
 		String& insert(size_t index, const String& other);
 
 		String& insert(size_t index, const String& other, size_t s_index, size_t count = npos);
+
+//--------------------------------------------------------operations--------------------------------------------------------
+
+		String substr(size_t pos = 0, size_t count = npos) const&;
+
+
 
 		explicit operator const char*();
 

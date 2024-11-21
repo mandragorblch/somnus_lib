@@ -253,10 +253,14 @@ namespace smns {
         return *this;
     }
 
-    // String& String::insert(size_t index, const String& other, size_t s_index, size_t count) {
-    //     this->insert(index, other.c_str(), other.sz);
-    //     return *this;
-    // }
+    String& String::insert(size_t index, const String& other, size_t s_index, size_t count) {
+        this->insert(index, other.substr(s_index, count));
+        return *this;
+    }
+
+    String String::substr(size_t pos, size_t count) const& {
+      return String(_pointer + pos, count);
+    }
 
     String::operator char*() {
         return _pointer;

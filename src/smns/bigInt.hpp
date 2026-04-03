@@ -6,121 +6,107 @@
 #include <algorithm>
 #include <iterator>
 #include <cassert>
+#include <cstring>
 
 template<typename T, typename U>
-struct is_same_template_v : std::is_same<T,U>
-{};
+struct is_same_template_v : std::is_same<T, U>
+{
+};
 
 template<template<typename> typename T, typename Args1, typename Args2>
 struct is_same_template_v<T<Args1>, T<Args2>> : std::true_type
-{};
+{
+};
 
-////is not working, bad aligning for undefined reason
-// template<size_t sz>
-// union Number {//with sign flag in last bit
-//     unsigned char val[sz];
-// private:
-//     struct {
-//         uint8_t : (sz * 8 - 1);
-//         bool SF : 1;
-//     } SF;
-// public:
-//     bool getSign() const{
-//         return SF.SF;
-//     }
-// };
-
+//sz - size in bytes
 template<size_t sz>
 struct Number {
-    unsigned char val[sz];
-    bool getSign() const{
+    unsigned char val[sz] {};
+
+    template<typename T>
+        requires(std::is_integral_v<T>)
+    Number(const T& other) {
+        static_assert(sz >= sizeof(T), "u don't wanna shrink fundamental type (yeah, i'm pretty sure u don't :3)");
+
+        if constexpr (sz == sizeof(T)) {
+            reinterpret_cast<T&>(val[0]) = other;
+        } else if (sz > sizeof(T)) {
+            std::memset(&val[sizeof(T)], other < 0 ? ~0 : 0, sz - sizeof(T));
+            reinterpret_cast<T&>(val[0]) = other;
+        }
+    }
+
+    template<size_t other_sz>
+    Number(const Number<other_sz>& other) {
+        if constexpr (sz > other_sz) std::memset(&val[other_sz], other.getSign() ? 0xff : 0x00, sz - other_sz);
+        std::memcpy(&val[0], &other.val[0], std::min(sz, other_sz));
+    }
+
+    bool getSign() const {
         return reinterpret_cast<const char&>(val[sz - 1]) < 0;
     }
 };
 
 template<typename T>
-requires(std::is_integral_v<T> && std::is_unsigned_v<T>)
-bool add_overflow(T a, T b, T* dst){
-    using u_T_r = std::make_unsigned_t<T>&;
-    return reinterpret_cast<u_T_r>(*dst = a + b) < reinterpret_cast<u_T_r>(b);
+    requires(std::is_integral_v<T> && std::is_unsigned_v<T>)
+bool add_overflow(T a, T b, T* dst) {
+    return (dst = a + b) < b;
+    //return __builtin_add_overflow(a, b, dst);
+}
+
+template<typename T, typename U>
+    requires(std::is_integral_v<T> && std::is_unsigned_v<T> &&
+             std::is_integral_v<U> && std::is_unsigned_v<U> &&
+             sizeof(T) >= sizeof(U))
+bool add_overflow(T& dst, const U& val) {
+    return (dst += val) < (val);
+    //return __builtin_add_overflow(dst, val, &dst);
 }
 
 template<typename T>
-requires(std::is_integral_v<T> && std::is_unsigned_v<T>)
-bool add_overflow(T& dst, T src){
-    using u_T_r = std::make_unsigned_t<T>&;
-    return reinterpret_cast<u_T_r>(dst += src) < reinterpret_cast<u_T_r>(src);
+    requires(std::is_integral_v<T> && std::is_unsigned_v<T>)
+bool add_with_carry(T& dst, const T val, const bool carry) {
+    return add_overflow(dst, carry) | add_overflow(dst, val);
+}
+
+template<typename T, typename U>
+    requires(std::is_integral_v<T> && std::is_unsigned_v<T> &&
+             std::is_integral_v<U> && std::is_unsigned_v<U> &&
+             sizeof(T) >= sizeof(U))
+bool sub_overflow(T& dst, const U& val) {
+    bool carry = dst < val;
+    dst -= val;
+    return carry;
 }
 
 template<typename T>
-requires(std::is_integral_v<T> && std::is_unsigned_v<T>)
-bool add_overflow_OF(T& dst, T var, bool OF){
-    // if(OF) {
-    //     if(++var == 0) return true;//overflow happened, var = 0 -> dst + var = dst[without any change]
-    // }
-    //return add_overflow(dst, var);
-    return (OF && (++var == 0)) || add_overflow(dst, var);
-}
-
-template<typename T>
-requires(std::is_integral_v<T> && std::is_unsigned_v<T>)
-bool add_overflow_OF_with_255(T& dst, bool OF){
-    //if OF -> 255 + 1 = 0(char overflow) ->
-    return OF || (--dst != 255);
-}
-
-template<typename T>
-requires(std::is_integral_v<T> && std::is_unsigned_v<T>)
-bool sub_overflow(T& a, T b){
-    using u_T_r = std::make_unsigned_t<T>&;
-    bool OF = reinterpret_cast<u_T_r>(a) < reinterpret_cast<u_T_r>(b);
-    a -= b;
-    return OF;
-}
-
-template<typename T>
-requires(std::is_integral_v<T> && std::is_unsigned_v<T>)
-bool sub_overflow(T a, T b, T* result){
-    using u_T_r = std::make_unsigned_t<T>&;
-    (*result) = a - b;
-    return reinterpret_cast<u_T_r>(a) < reinterpret_cast<u_T_r>(b);
-}
-
-template<typename T>
-requires(std::is_integral_v<T> && std::is_unsigned_v<T>)
-bool sub_overflow_OF(T a, T b, bool OF, T* result){
-    //++b because b is substracting from a i.e. (a - b - 1) = a - (b + 1)
-    return (OF && (++b == 0)) || sub_overflow(a, b, result);
-}
-
-template<typename T>
-requires(std::is_integral_v<T> && std::is_unsigned_v<T>)
-bool sub_overflow_OF_with_255(T& a, bool OF){
-    return OF || (++a != 0);
+    requires(std::is_integral_v<T>&& std::is_unsigned_v<T>)
+bool sub_with_borrow(T& dst, const T val, const bool carry) {
+    return sub_overflow(dst, carry) | sub_overflow(dst, val);
 }
 
 template<size_t sz>
-std::weak_ordering unsigned_compare(const uint8_t* data, const uint8_t* other_data){
-    for(size_t i = (sz - 1); i < std::numeric_limits<size_t>::max(); --i){
-        if(data[i] == other_data[i]) continue;
+std::weak_ordering unsigned_compare(const uint8_t* data, const uint8_t* other_data) {
+    for (size_t i = (sz - 1); i < std::numeric_limits<size_t>::max(); --i) {
+        if (data[i] == other_data[i]) continue;
         return (data[i] < other_data[i]) ? std::weak_ordering::less : std::weak_ordering::greater;
     }
     return std::weak_ordering::equivalent;//is equal
 }
 
 template<size_t end, size_t begin>
-bool all_is_same(const void* data, const void* other_data){
+bool all_is_same(const void* data, const void* other_data) {
 
-    for(size_t i = begin; i < end; ++i){
-        if(reinterpret_cast<const uint8_t*>(data)[i] != reinterpret_cast<const uint8_t*>(other_data)[i]) return false;//0 - signed extension. if data[i] == 0 for will continue automaticaly
+    for (size_t i = begin; i < end; ++i) {
+        if (reinterpret_cast<const uint8_t*>(data)[i] != reinterpret_cast<const uint8_t*>(other_data)[i]) return false;//0 - signed extension. if data[i] == 0 for will continue automaticaly
     }
     return true;
 }
 
 template<typename T, size_t end, size_t begin, T val>
-bool all_is_same(const void* data){
-    for(size_t i = begin; i < end; ++i){
-        if(reinterpret_cast<const uint8_t*>(data)[i] != val) return false;//0 - signed extension. if data[i] == 0 for will continue automaticaly
+bool all_is_same(const void* data) {
+    for (size_t i = begin; i < end; ++i) {
+        if (reinterpret_cast<const uint8_t*>(data)[i] != val) return false;//0 - signed extension. if data[i] == 0 for will continue automaticaly
     }
     return true;
 }
@@ -132,22 +118,22 @@ struct size_to_int {
 };
 
 template<>
-struct size_to_int<1>{
+struct size_to_int<1> {
     using type = int8_t;
 };
 
 template<>
-struct size_to_int<2>{
+struct size_to_int<2> {
     using type = int16_t;
 };
 
 template<>
-struct size_to_int<4>{
+struct size_to_int<4> {
     using type = int32_t;
 };
 
 template<>
-struct size_to_int<8>{
+struct size_to_int<8> {
     using type = int64_t;
 };
 
@@ -156,318 +142,223 @@ using size_to_int_t = typename size_to_int<sz>::type;
 
 
 
-template<size_t sz>
+//chunk_sz - amount of elements of type chunk_t
+//chunk_t - type(size) of data chunks
+//sz - size in bytes
+template<size_t chunk_sz, typename chunk_t = uint8_t, size_t sz = chunk_sz * sizeof(chunk_t)>
+    requires(std::is_unsigned_v<chunk_t> && sz > 0 && sz % sizeof(chunk_t) == 0)
 struct bigInt {
     Number<sz> number;
-    uint8_t (&data)[sz] = number.val;
+    chunk_t* const data = &number.val[0];
+    //tells if last op cause overflow
+    bool overflow = false;
+
+private:
+    static constexpr chunk_t chunk_max = std::numeric_limits<chunk_t>::max();
+
+public:
 
     //explicit static conversion to type T
     template<typename T>
-    requires (std::is_integral_v<std::remove_cvref_t<T>> && sizeof(std::remove_cvref_t<T>) <= sz)
-    explicit operator T(){
-        using clear_type = std::remove_cvref_t<T>;
-        #ifdef ENABLE_LOGGING
+        requires (std::is_integral_v<std::remove_cvref_t<T>>)
+    explicit operator T() {
+#ifdef ENABLE_LOGGING
         std::cout << "explicitly casted!\n";
-        #endif
-        constexpr T u_T_max = std::numeric_limits<std::make_unsigned_t<T>>::max(); 
-        std::make_signed_t<T> extend = number.getSign() ? u_T_max : 0;//signed/unsigned extention
-        memcpy(&extend, &data[0], sz);
-        return reinterpret_cast<clear_type&>(data[0]);
+#endif
+        static_assert(sz <= sizeof(T), "u don't wanna shrink ur number (yeah, i'm pretty sure u don't :3)");
+        bigInt<sizeof(T)> res = *this;
+        return reinterpret_cast<T&>(res.data[0]);
     }
 
 
 
     bigInt() = delete;
-    
-    template<typename T>
-    requires (std::is_integral_v<T>)
-    bigInt(const T& other) {
-        #ifdef ENABLE_LOGGING
-        std::cout << "bigInt<" << sz << "> constructor from integer!\n";
-        #endif
 
-        (*this) = other;
+    template<typename T>
+        requires (std::is_integral_v<T>)
+    bigInt(const T& other) : number(other) {
+#ifdef ENABLE_LOGGING
+        std::cout << "bigInt<" << sz << "> constructor from integer!\n";
+#endif
     }
 
     template<size_t other_sz>
-    bigInt(const bigInt<other_sz>& other) {
-        #ifdef ENABLE_LOGGING
+    bigInt(const bigInt<other_sz>& other) : number(other.number) {
+#ifdef ENABLE_LOGGING
         std::cout << "constructed from bigInt!\n";
-        #endif   
-
-        (*this) = other;            
+#endif
     }
 
     //copy constructor
-    bigInt(const bigInt& other) {
-        #ifdef ENABLE_LOGGING
+    bigInt(const bigInt& other) : number(other.number) {
+#ifdef ENABLE_LOGGING
         std::cout << "constructed from bigInt with same size!\n";
-        #endif   
-
-        (*this) = other;     
+#endif
     }
 
 
 
     template<typename T>
-    requires (std::is_integral_v<T>)
+        requires (std::is_integral_v<T>)
     bigInt& operator=(const T& other)& {
-        #ifdef ENABLE_LOGGING
+#ifdef ENABLE_LOGGING
         std::cout << "bigInt<" << sz << ">::operator= with integer sizeof(T) = " << sizeof(T) << "!\n";
-        #endif    
-
-        if constexpr(sz == sizeof(T)) {
-            reinterpret_cast<T&>(data[0]) = other;
-        } else if(sz < sizeof(T)) {
-            memcpy(&data[0], &other, sz);
-        } else {//sz > sizeof(T)
-            if constexpr(std::is_signed_v<T>) {
-                memset(&data[sizeof(T)], other < 0 ? 255 : 0, sz - sizeof(T));
-            } else { 
-                memset(&data[sizeof(T)], 0, sz - sizeof(T));
-            }
-            memcpy(&data[0], &other, sizeof(T));
-        }
-        return *this;
+#endif    
+        static_assert(sz >= sizeof(T), "u don't wanna shrink fundamental type (yeah, i'm pretty sure u don't :3)");
+        //sizeof(T) + 1 to make difference between signed/unsigned T clear
+        return *this = bigInt<sizeof(T) + 1>(other);
     }
 
     template<size_t other_sz>
     bigInt& operator=(const bigInt<other_sz>& other)& {
-        #ifdef ENABLE_LOGGING
+#ifdef ENABLE_LOGGING
         std::cout << "bigInt<" << sz << ">::operator= with bigInt<" << other_sz << ">!\n";
-        #endif 
+#endif 
+        static_assert(sz >= other_sz, "u don't wanna shrink other (yeah, i'm pretty sure u don't :3)");
 
-        if constexpr(sz > other_sz){
-            memset(&data[other_sz], other.number.getSign() ? 255 : 0, sz - other_sz);
-            memcpy(&data[0], &other.data[0], other_sz);
-        } else {//sz < other_sz
-            memcpy(&data[0], &other.data[0], sz);
-        }
+        //signed extension
+        std::memset(&data[other_sz], other.signbit() ? chunk_max : 0, sz - other_sz);
+        std::memcpy(&data[0], &other.data[0], other_sz);
         return *this;
     }
 
     //copy assignment 
     bigInt& operator=(const bigInt& other)& {
-        #ifdef ENABLE_LOGGING
+#ifdef ENABLE_LOGGING
         std::cout << "equaled to bigInt with same size!\n";
-        #endif  
+#endif  
 
         if (this == &other)
             return *this;
 
-        memcpy(&data[0], &other.data[0], sz);      
+        std::memcpy(&data[0], &other.data[0], sz);
         return *this;
     }
 
     //------------------------------------arithmetic---------------------------------------
 
     template<typename T>
-    requires (std::is_integral_v<T>)
+        requires (std::is_integral_v<T>)
     bigInt& operator+=(const T& other)& {
-        #ifdef ENABLE_LOGGING
+#ifdef ENABLE_LOGGING
         std::cout << "bigInt<" << sz << ">::operator+= with integer sizeof(T) = " << sizeof(T) << "!\n";
-        #endif  
-
-        if constexpr (sz == sizeof(T)) {
-            reinterpret_cast<std::make_signed_t<T>&>(data[0]) += other;
-        } else if (sz < sizeof(T)) {
-            if constexpr(!std::is_same_v<size_to_int_t<sz>, void>) {
-                reinterpret_cast<size_to_int_t<sz>&>(data[0]) += other;
-            } else {
-                const uint8_t* other_chunks = reinterpret_cast<const uint8_t*>(&other);
-                bool OF = add_overflow(data[0], other_chunks[0]);
-                for (size_t i = 1; i < sz - 1; ++i) {
-                    OF = add_overflow_OF(data[i], other_chunks[i], OF);
-                }
-
-                data[sz - 1] += other_chunks[sz - 1] + OF;
-            }
-        } else {//sz > sizeof(T)
-            const uint8_t* other_chunks = reinterpret_cast<const uint8_t*>(&other);
-            bool OF = add_overflow(data[0], other_chunks[0]);
-            for (size_t i = 1; i < sizeof(T); ++i) {
-                OF = add_overflow_OF(data[i], other_chunks[i], OF);
-            }
-
-            if constexpr(std::is_signed_v<T>){
-                if(other < 0) {//sign extention
-                    for (size_t i = sizeof(T); i < sz; ++i) {
-                        OF = add_overflow_OF_with_255(data[i], OF);
-                    }
-                    //data[sz - 1] += other_chunks[sz - 1] + OF; other_chunks[sz - 1] = 255, unsigned char => x += 255 is same as --x;  
-                } else {
-                    if(OF) {
-                        for (size_t i = sizeof(T); (i < sz) && (++data[i] == 0); ++i);
-                    }
-                }
-            } else {//T is unsigned
-                if(OF) {
-                    for (size_t i = sizeof(T); (i < sz) && (++(data[i]) == 0); ++i);
-                }
-            }
-        }
-
-        return *this;
+#endif  
+        static_assert(sz >= sizeof(T), "u don't wanna add bigger or the same size fundamental type (yeah, i'm pretty sure u don't :3)");
+        //sizeof(T) + 1 to make difference between signed/unsigned T clear
+        return *this += bigInt<sizeof(T) + 1>(other);
     }
 
-    template<size_t other_sz>
-    bigInt& operator+=(const bigInt<other_sz>& other)& {
-        #ifdef ENABLE_LOGGING
+    template<size_t other_chunk_sz, typename other_chunk_t, size_t other_sz>
+    bigInt& operator+=(const bigInt<other_chunk_sz, other_chunk_t, other_sz>& other)& {
+#ifdef ENABLE_LOGGING
         std::cout << "bigInt<" << sz << ">::operator+= with bigInt<" << other_sz << ">!\n";
-        #endif
+#endif
+        static_assert(sz >= other_sz, "u don't wanna add bigger or the same size bigInt (yeah, i'm pretty sure u don't :3)");
 
-        constexpr size_t min_sz = (std::min)(sz, other_sz);
-        bool OF = add_overflow(data[0], other.data[0]);
-        for (size_t i = 1; i < min_sz - 1; ++i) {
-            OF = add_overflow_OF(data[i], other.data[i], OF);
+        overflow = false;
+        //carry flag
+        bool carry = add_overflow(data[0], other.data[0]);
+        //TODO - rewrite that for arbitrary chunk_t
+        for (size_t i = 1; i < std::min(sz, other_sz); ++i) {
+            carry = add_with_carry(data[i], other.data[i], carry);
         }
 
-        if constexpr (sz < other_sz) {
-            data[sz - 1] += other.data[sz - 1] + OF;
-        } else {
-            OF = add_overflow_OF(data[other_sz - 1], other.data[other_sz - 1], OF);
-            if(other.number.getSign()) {
-                for (size_t i = other_sz; i < sz - 1; ++i) {
-                    OF = add_overflow_OF_with_255(data[i], OF);
+        if constexpr (sz > other_sz) {
+            //bringing carry block-to-block
+            if (other.signbit()) {
+                //signed extension
+                //if we have carry = 1, it will overflow ALL signed extension
+                //and all further addition will be with 0
+                for (size_t i = other_sz; !carry && (i < sz); ++i) {
+                    carry = add_with_carry(data[i], chunk_max, carry);
                 }
-                --data[sz - 1] += OF;    
             } else {
-                if(OF) {
-                    for (size_t i = other_sz; (i < sz) && (++data[i] == 0); ++i);
-                } 
-            }  
+                //propagate carry
+                for (size_t i = other_sz; carry && (i < sz); ++i) {
+                    carry = (++data[i] == 0);
+                }
+            }
         }
+
+        overflow = carry;
 
         return *this;
     }
-
-    bigInt& operator+=(const bigInt& other)& {
-        #ifdef ENABLE_LOGGING
-        std::cout << "bigInt<" << sz << ">::operator+= with bigInt same size!\n";
-        #endif  
-
-        bool OF = add_overflow(data[0], other.data[0]);
-        for (size_t i = 1; i < sz - 1; ++i) {
-            OF = add_overflow_OF(data[i], other.data[i], OF);
-        }
-
-        data[sz - 1] += other.data[sz - 1] + OF;     
-
-        return *this;
-    }
-
 
 
     template<typename T>
-    requires (std::is_integral_v<T>)
+        requires (std::is_integral_v<T>)
     bigInt& operator-=(const T& other)& {
-        #ifdef ENABLE_LOGGING
+#ifdef ENABLE_LOGGING
         std::cout << "bigInt<" << sz << ">::operator-= with integer sizeof(T) = " << sizeof(T) << "!\n";
-        #endif  
+#endif  
 
-        if constexpr (sz == sizeof(T)) {
-            reinterpret_cast<std::make_signed_t<T>&>(data[0]) -= other;
-        } else if(sz < sizeof(T)) {
-            if constexpr(!std::is_same_v<size_to_int_t<sz>, void>) {
-                reinterpret_cast<size_to_int_t<sz>&>(data[0]) -= other;
-            } else {
-                const uint8_t* other_chunks = reinterpret_cast<const uint8_t*>(&other);
-                bool OF = sub_overflow(data[0], other_chunks[0]);
-                for (size_t i = 1; i < sz - 1; ++i) {
-                    OF = sub_overflow_OF(data[i], other_chunks[i], OF);
-                }
-
-                data[sz - 1] -= (other_chunks[sz - 1] + OF);
-            }
-        } else {//sz > sizeof(T)
-            const uint8_t* other_chunks = reinterpret_cast<const uint8_t*>(&other);
-            bool OF = sub_overflow(data[0], other_chunks[0], &data[0]);
-            for (size_t i = 1; i < sizeof(T); ++i) {
-                OF = sub_overflow_OF(data[i], other_chunks[i], OF, &data[i]);
-            }
-
-            if constexpr(std::is_signed_v<T>){
-                if(other < 0){
-                    for (size_t i = sizeof(T); i < sz - 1; ++i) {
-                        OF = sub_overflow_OF_with_255(data[i], OF);
-                    }
-                    //value[sz - 1] -= (other_chunks[sz - 1] + OF); other_chunks[sz - 1] = 255, unsigned char => x -= 255 is same as ++x;
-                    ++data[sz - 1] -= OF;    
-                } else {
-                    if(OF) {
-                        for (size_t i = sizeof(T); (i < sz) && (--data[i] == 255); ++i);
-                    }
-                }
-            } else {
-                if(OF) {
-                    for (size_t i = sizeof(T); (i < sz) && (--data[i] == 255); ++i);
-                }
-            }
-        }      
-        
+        if constexpr (sz >= sizeof(T)) {
+            //sizeof(T) + 1 to make difference between signed/unsigned T clear
+            return *this -= bigInt<sizeof(T) + 1>(other);
+        }
+        static_assert(sz >= sizeof(T), "u don't wanna sub bigger fundamental type (yeah, i'm pretty sure u don't :3)");
         return *this;
     }
 
     template<size_t other_sz>
     bigInt& operator-=(const bigInt<other_sz>& other)& {
-        #ifdef ENABLE_LOGGING
+#ifdef ENABLE_LOGGING
         std::cout << "bigInt<" << sz << ">::operator-= with bigInt<" << other_sz << ">!\n";
-        #endif
+#endif
+        static_assert(sz >= other_sz, "u don't wanna sub bigger number (yeah, i'm pretty sure u don't :3)");
 
-        constexpr size_t min_sz = (std::min)(sz, other_sz);
-        bool OF = sub_overflow(data[0], other.data[0], &data[0]);
-        for (size_t i = 1; i < min_sz; ++i) {
-            OF = sub_overflow_OF(data[i], other.data[i], OF, &data[i]);
+        //ofc there can be a DRY idiom, but there is a copy
+        //return (*this += -other);
+
+        overflow = false;
+        //borrow flag
+        bool borrow = sub_overflow(data[0], other.data[0]);
+        for (size_t i = 1; i < std::min(sz, other_sz); ++i) {
+            borrow = sub_with_borrow(data[i], other.data[i], borrow);
         }
 
-        if constexpr (sz < other_sz) {
-            data[sz - 1] -= (other.data[sz - 1] + OF);
-        } else {//sz > other_sz
-            OF = sub_overflow_OF(data[other_sz - 1], other.data[other_sz - 1], OF, &data[other_sz - 1]);
-            if(other.number.getSign()){
-                for (size_t i = other_sz; i < sz - 1; ++i) {
-                    OF = sub_overflow_OF_with_255(data[i], OF);
+        if constexpr (sz > other_sz) {
+            //bringing carry block-to-block
+            if (other.signbit()) {
+                //signed extension
+                //that optimization is a tricky one! sooo...
+                //we have (data[i] -= chunk_max + borrow) here, so if we had borrow = 1
+                //then we overflow chunk_max and then we have (data[i] -= 0)
+                //and (borrow = 1) for next data block, and that borrow underflows
+                //ALL further blocks and it ended up with (data[i] -= 0) till the end
+                //so no need to continue
+                for (size_t i = other_sz; !borrow && i < sz; ++i) {
+                    borrow = sub_with_borrow(data[i], chunk_max, borrow);
                 }
-                //value[sz - 1] -= (other.value[sz - 1] + OF); other.value[sz - 1] = 255, unsigned char => x -= 255 is same as ++x;
-                ++data[sz - 1] -= OF;    
             } else {
-                if(OF) {
-                    for (size_t i = other_sz; (i < sz) && (--data[i] == 255); ++i);
+                //propagate borrow
+                for (size_t i = other_sz; borrow && (i < sz); ++i) {
+                    borrow = (--data[i] == chunk_max);
                 }
             }
         }
-        return *this;
-    }
 
-    bigInt& operator-=(const bigInt& other)& {
-        #ifdef ENABLE_LOGGING
-        std::cout << "bigInt<" << sz << ">::operator-= with bigInt same size!\n";
-        #endif
+        overflow = borrow;
 
-        bool OF = sub_overflow(data[0], other.data[0], &data[0]);
-        for (size_t i = 1; i < sz - 1; ++i) {
-            OF = sub_overflow_OF(data[i], other.data[i], OF, &data[i]);
-        }
-
-        data[sz - 1] -= (other.data[sz - 1] + OF);
         return *this;
     }
 
 
 
     template<typename T>
-    requires (std::is_integral_v<T>)
+        requires (std::is_integral_v<T>)
     bigInt& operator/=(const T& other)& {
         if constexpr (sz == sizeof(T)) {
             reinterpret_cast<std::make_signed_t<T>&>(data[0]) /= other;
         } else if (sz < sizeof(T)) {
-            if constexpr(!std::is_same_v<size_to_int_t<sz>, void>) {
+            if constexpr (!std::is_same_v<size_to_int_t<sz>, void>) {
                 reinterpret_cast<size_to_int_t<sz>&>(data[0]) /= other;
             } else {
                 assert(other != 0 && "division by zero!");
-        
+
                 bool sign = number.getSign();
-                if(sign) changeSign();
+                if (sign) changeSign();
                 bool other_sign = (other < 0);
                 constexpr size_t bits_in_dividend = sizeof(T) * 8;
 
@@ -477,30 +368,30 @@ struct bigInt {
                 bigInt<sizeof(T) * 2> divisor = (other_sign ? -other : other);
                 divisor <<= (sizeof(T) * 8);
 
-                for(size_t i = bits_in_dividend - 1; i < std::numeric_limits<size_t>::max(); --i){
-                    if(remainder.number.getSign()) {
+                for (size_t i = bits_in_dividend - 1; i < std::numeric_limits<size_t>::max(); --i) {
+                    if (remainder.number.getSign()) {
                         quotient.setBit(i, false);
-                        (remainder <<= 1) += divisor; 
+                        (remainder <<= 1) += divisor;
                     } else {
                         quotient.setBit(i, true);
-                        (remainder <<= 1) -= divisor;                     
+                        (remainder <<= 1) -= divisor;
                     }
                 }
                 quotient -= ~quotient;
 
-                if(remainder.number.getSign()) {
+                if (remainder.number.getSign()) {
                     --quotient;
                     //remainder += divisor;
                 }
                 //remainder >>= bits_in_dividend;
-                if(sign ^ other_sign) quotient.changeSign();
+                if (sign ^ other_sign) quotient.changeSign();
                 (*this) = quotient;
             }
         } else {//sz > sizeof(T)
             assert(other != 0 && "division by zero!");
-            
+
             bool sign = number.getSign();
-            if(sign) changeSign();
+            if (sign) changeSign();
             bool other_sign = (other < 0);
             constexpr size_t bits_in_dividend = sz * 8;
 
@@ -510,23 +401,23 @@ struct bigInt {
             bigInt<sz * 2> divisor(other_sign ? -other : other);
             divisor <<= bits_in_dividend;
 
-            for(size_t i = bits_in_dividend - 1; i < std::numeric_limits<size_t>::max(); --i){
-                if(remainder.number.getSign()) {
+            for (size_t i = bits_in_dividend - 1; i < std::numeric_limits<size_t>::max(); --i) {
+                if (remainder.number.getSign()) {
                     quotient.setBit(i, false);
-                    (remainder <<= 1) += divisor; 
+                    (remainder <<= 1) += divisor;
                 } else {
                     quotient.setBit(i, true);
-                    (remainder <<= 1) -= divisor;                     
+                    (remainder <<= 1) -= divisor;
                 }
             }
             quotient -= ~quotient;
 
-            if(remainder.number.getSign()) {
+            if (remainder.number.getSign()) {
                 --quotient;
                 //remainder += divisor;
             }
             //remainder >>= bits_in_dividend;
-            if(sign ^ other_sign) quotient.changeSign();
+            if (sign ^ other_sign) quotient.changeSign();
             //(*this) = quotient;
         }
 
@@ -539,7 +430,7 @@ struct bigInt {
         assert(other != 0 && "division by zero!");
 
         bool sign = number.getSign();
-        if(sign) changeSign();
+        if (sign) changeSign();
         bool other_sign = (other.number.getSign());
         constexpr size_t bits_in_dividend = sz * 8;
 
@@ -549,23 +440,23 @@ struct bigInt {
         bigInt<sz * 2> divisor(other_sign ? -other : other);
         divisor <<= bits_in_dividend;
 
-        for(size_t i = bits_in_dividend - 1; i < std::numeric_limits<size_t>::max(); --i){
-            if(remainder.number.getSign()) {
+        for (size_t i = bits_in_dividend - 1; i < std::numeric_limits<size_t>::max(); --i) {
+            if (remainder.number.getSign()) {
                 quotient.setBit(i, false);
-                (remainder <<= 1) += divisor; 
+                (remainder <<= 1) += divisor;
             } else {
                 quotient.setBit(i, true);
-                (remainder <<= 1) -= divisor;                     
+                (remainder <<= 1) -= divisor;
             }
         }
         quotient -= ~quotient;
 
-        if(remainder.number.getSign()) {
+        if (remainder.number.getSign()) {
             --quotient;
             //remainder += divisor;
         }
         //remainder >>= bits_in_dividend;
-        if(sign ^ other_sign) quotient.changeSign();
+        if (sign ^ other_sign) quotient.changeSign();
         //(*this) = quotient;
 
         return *this;
@@ -575,7 +466,7 @@ struct bigInt {
         assert(other != 0 && "division by zero!");
 
         bool sign = number.getSign();
-        if(sign) changeSign();
+        if (sign) changeSign();
         bool other_sign = (other.number.getSign());
         constexpr size_t bits_in_dividend = sz * 8;
 
@@ -585,23 +476,23 @@ struct bigInt {
         bigInt<sz * 2> divisor(other_sign ? -other : other);
         divisor <<= bits_in_dividend;
 
-        for(size_t i = bits_in_dividend - 1; i < std::numeric_limits<size_t>::max(); --i){
-            if(remainder.number.getSign()) {
+        for (size_t i = bits_in_dividend - 1; i < std::numeric_limits<size_t>::max(); --i) {
+            if (remainder.number.getSign()) {
                 quotient.setBit(i, false);
-                (remainder <<= 1) += divisor; 
+                (remainder <<= 1) += divisor;
             } else {
                 quotient.setBit(i, true);
-                (remainder <<= 1) -= divisor;                     
+                (remainder <<= 1) -= divisor;
             }
         }
         quotient -= ~quotient;
 
-        if(remainder.number.getSign()) {
+        if (remainder.number.getSign()) {
             --quotient;
             //remainder += divisor;
         }
         //remainder >>= bits_in_dividend;
-        if(sign ^ other_sign) quotient.changeSign();
+        if (sign ^ other_sign) quotient.changeSign();
         //(*this) = quotient;
 
         return *this;
@@ -609,153 +500,151 @@ struct bigInt {
 
 
 
-    bigInt& operator++()&{//++bi 
-        #ifdef ENABLE_LOGGING
+    bigInt& operator++()& {//++bi 
+#ifdef ENABLE_LOGGING
         std::cout << "bigInt<" << sz << ">::operator++()!\n";
-        #endif
-        if(++data[0] == 0){//OF
-            for (size_t i = 1; (i < sz) && (++data[i] == 0); ++i);
-        } 
-        return *this;
+#endif
+        return (*this += bigInt<1>(true));
     }
 
-    bigInt operator++(int)&{//bi++
-        #ifdef ENABLE_LOGGING
+    bigInt operator++(int)& {//bi++
+#ifdef ENABLE_LOGGING
         std::cout << "bigInt<" << sz << ">::operator++(int)!\n";
-        #endif
+#endif
         bigInt res(*this);
         ++(*this);
         return res;
     }
 
-    bigInt& operator--()&{//--bi
-        #ifdef ENABLE_LOGGING
+    bigInt& operator--()& {//--bi
+#ifdef ENABLE_LOGGING
         std::cout << "bigInt<" << sz << ">::operator--()!\n";
-        #endif
-        if(--data[0] == 255) {
-            for (size_t i = 1; (i < sz) && (--data[i] == 255); ++i);
-        }
-        return *this;
+#endif
+        return (*this -= bigInt<1>(true));
     }
 
-    bigInt operator--(int)&{//bi--
-        #ifdef ENABLE_LOGGING
+    bigInt operator--(int)& {//bi--
+#ifdef ENABLE_LOGGING
         std::cout << "bigInt<" << sz << ">::operator--(int)!\n";
-        #endif
+#endif
         bigInt res(*this);
         --(*this);
         return res;
     }
     //---------------------------------------bitwise---------------------------------------
-    bigInt operator~() const{//~bi
-        #ifdef ENABLE_LOGGING
+    bigInt operator~() const {//~bi
+#ifdef ENABLE_LOGGING
         std::cout << "operator~ is called!\n";
-        #endif
+#endif
         bigInt res(*this);
-        for (size_t i = 0; i < sz; ++i) {
+        for (size_t i = 0; i < chunk_sz; ++i) {
             res.data[i] = ~res.data[i];
         }
         return res;
     }
 
-    bigInt& applyNot()&{    
-        #ifdef ENABLE_LOGGING
+    bigInt& applyNot()& {
+#ifdef ENABLE_LOGGING
         std::cout << "applyNot is called!\n";
-        #endif
-        for (size_t i = 0; i < sz; ++i) {
+#endif
+        for (size_t i = 0; i < chunk_sz; ++i) {
             data[i] = ~data[i];
         }
         return *this;
     }
 
-    bigInt operator-() const{//-bi
-        #ifdef ENABLE_LOGGING
+    bigInt operator-() const {//-bi
+#ifdef ENABLE_LOGGING
         std::cout << "leftside operator- is called!\n";
-        #endif
+#endif
         bigInt res(~(*this));
         ++res;
         return res;
     }
 
-    bigInt& changeSign()&{
-        #ifdef ENABLE_LOGGING
+    bigInt& changeSign()& {
+#ifdef ENABLE_LOGGING
         std::cout << "changeSign is called!\n";
-        #endif
-        ++(this->applyNot());
-        return *this;
+#endif
+        return ++(this->applyNot());
     }
+    
     //bitIndex - from 0
     bigInt& setBit(size_t bitIndex, bool val) {
         assert(bitIndex < (sz * 8) && "can't acces bitIndex!\n");
 
-        if(val) {
-            data[bitIndex / 8] |= (1 << (bitIndex % 8));
+        constexpr size_t bits_per_chunk = sizeof(chunk_t) * 8;
+        const size_t chunkIndex = bitIndex / bits_per_chunk;
+        const size_t bitInChunk = bitIndex % bits_per_chunk;
+        const chunk_t mask = static_cast<chunk_t>(1) << bitInChunk;
+        if (val) {
+            data[chunkIndex] |= mask;
         } else {
-            data[bitIndex / 8] &= (~(1 << (bitIndex % 8)));
+            data[chunkIndex] &= ~mask;
         }
 
         return *this;
     }
 
     bigInt& operator<<=(size_t shift) {
-        #ifdef ENABLE_LOGGING
+#ifdef ENABLE_LOGGING
         std::cout << "bigInt<" << sz << ">::operator<<=!\n";
-        #endif
+#endif
         shift %= (sz * 8);
-        if(shift == 0) return *this;
+        if (shift == 0) return *this;
         const auto byteShift = shift / 8;
         const auto bitShift = shift % 8;
         constexpr size_t cluster_sz = sizeof(data[0]) * 8;
 
-        if(byteShift == 0) {//the most often
-            for(size_t i = (sz - 1); i > 0; --i) {
+        if (byteShift == 0) {//the most often
+            for (size_t i = (sz - 1); i > 0; --i) {
                 (data[i] <<= bitShift) |= (data[i - 1] >> (cluster_sz - bitShift));
             }
             data[0] <<= bitShift;
-        } else if(bitShift == 0) {
-            for(size_t i = (sz - 1); i >= byteShift; --i) {
+        } else if (bitShift == 0) {
+            for (size_t i = (sz - 1); i >= byteShift; --i) {
                 data[i] = (data[i - byteShift]);
             }
-            memset(&data[0], 0, byteShift);
+            std::memset(&data[0], 0, byteShift);
         } else {//arbitrary case
-            for(size_t i = (sz - 1); i > byteShift; --i) {
+            for (size_t i = (sz - 1); i > byteShift; --i) {
                 data[i] = (data[i - byteShift] << bitShift) | (data[i - byteShift - 1] >> (cluster_sz - bitShift));
             }
             data[byteShift] = data[0] << bitShift;
-            memset(&data[0], 0, byteShift);
+            std::memset(&data[0], 0, byteShift);
         }
 
         return *this;
     }
 
     bigInt& operator>>=(size_t shift) {
-        #ifdef ENABLE_LOGGING
+#ifdef ENABLE_LOGGING
         std::cout << "bigInt<" << sz << ">::operator>>=!\n";
-        #endif
-        
+#endif
+
         constexpr size_t cluster_sz = sizeof(data[0]) * 8;
         shift %= (sz * 8);
-        if(shift == 0) return *this;
+        if (shift == 0) return *this;
         const auto byteShift = shift / 8;
         const auto bitShift = shift % 8;
         bool sign = number.getSign();
-        if(byteShift == 0) {//the most often
-            for(size_t i = 0; i < (sz - 1); ++i) {
+        if (byteShift == 0) {//the most often
+            for (size_t i = 0; i < (sz - 1); ++i) {
                 data[i] = (data[i] >> bitShift) | (data[i + 1] << (cluster_sz - bitShift));
             }
-            reinterpret_cast<int8_t&>(data[sz - 1]) >>=  bitShift;
-        } else if(bitShift == 0) {
-            for(size_t i = 0; i < (sz - byteShift - 1); ++i) {
+            reinterpret_cast<int8_t&>(data[sz - 1]) >>= bitShift;
+        } else if (bitShift == 0) {
+            for (size_t i = 0; i < (sz - byteShift - 1); ++i) {
                 data[i] = data[i + byteShift];
             }
             data[sz - byteShift - 1] = reinterpret_cast<int8_t&>(data[sz - 1]);
-            memset(&data[sz - byteShift], sign ? 255 : 0, byteShift);
+            std::memset(&data[sz - byteShift], sign ? 255 : 0, byteShift);
         } else {//arbitrary case
-            for(size_t i = 0; i < (sz - byteShift - 1); ++i) {
+            for (size_t i = 0; i < (sz - byteShift - 1); ++i) {
                 data[i] = (data[i + byteShift] >> bitShift) | (data[i + byteShift + 1] << (cluster_sz - bitShift));
             }
             data[sz - byteShift - 1] = reinterpret_cast<int8_t&>(data[sz - 1]) >> bitShift;
-            memset(&data[sz - byteShift], sign ? 255 : 0, byteShift);
+            std::memset(&data[sz - byteShift], sign ? 255 : 0, byteShift);
         }
 
         return *this;
@@ -766,44 +655,44 @@ struct bigInt {
     friend std::ostream& operator<<(std::ostream& os, const bigInt<size>& b);
     //---------------------------------------logical---------------------------------------
     template<typename T>
-    requires (std::is_integral_v<T>)
+        requires (std::is_integral_v<T>)
     std::weak_ordering operator<=>(const T& other) const& {
-        #ifdef ENABLE_LOGGING
+#ifdef ENABLE_LOGGING
         std::cout << "bigInt<" << sz << ">::operator<=> with integer!\n";
-        #endif
+#endif
         if constexpr (sz == sizeof(T)) {
             return std::weak_order(reinterpret_cast<std::make_signed_t<T>&>(data[0]), other);
-        } else if (sz < sizeof(T)){//series of cringe optimization
-            if constexpr(!std::is_same_v<size_to_int_t<sz>, void>){
+        } else if (sz < sizeof(T)) {//series of cringe optimization
+            if constexpr (!std::is_same_v<size_to_int_t<sz>, void>) {
                 return std::weak_order(
                     static_cast<std::make_signed_t<T>>(
                         reinterpret_cast<const size_to_int_t<sz>&>(data[0]))
                     , other);
             } else {//creating full number considering the sign(if negative - extents with ones, else - zeros)
-                using u_T =  std::make_unsigned_t<T>;
+                using u_T = std::make_unsigned_t<T>;
                 constexpr u_T u_T_max = std::numeric_limits<u_T>::max();
 
                 std::make_signed_t<T> extend = number.getSign() ? u_T_max : 0;//signed/unsigned extention
-                memcpy(&extend, &data[0], sz);
+                std::memcpy(&extend, &data[0], sz);
                 return std::weak_order(extend, other);
-            } 
+            }
         } else {//sz > sizeof(T)
-            if constexpr(std::is_unsigned_v<T>){
-                if(number.getSign()) return std::weak_ordering::less;//bigInt is negative and other is positive
+            if constexpr (std::is_unsigned_v<T>) {
+                if (number.getSign()) return std::weak_ordering::less;//bigInt is negative and other is positive
                 //now bigInt is positive and other is positive -> check exceeding bytes considering the sign(if negative - extents with ones, else - zeros)
                 //if any of bytes of data, exceeding other is > 0 (!= 0, bc unsigned), (*this) is less
-                if(all_is_same<uint8_t, sz, sizeof(T), 0>(&data[0]) == false) return std::weak_ordering::greater;
+                if (all_is_same<uint8_t, sz, sizeof(T), 0>(&data[0]) == false) return std::weak_ordering::greater;
                 return unsigned_compare<sizeof(T)>(&data[0], reinterpret_cast<const uint8_t*>(&other));
             } else {//other is signed
-                if(number.getSign()){//bigInt is negative
-                    if(other >= 0) return std::weak_ordering::less;//if other is NOT negative return true
+                if (number.getSign()) {//bigInt is negative
+                    if (other >= 0) return std::weak_ordering::less;//if other is NOT negative return true
                     //other is negative(both same sign) => can use unsigned comparison
-                    if(all_is_same<uint8_t, sz, sizeof(T), 255>(&data[0]) == false) return std::weak_ordering::less;
+                    if (all_is_same<uint8_t, sz, sizeof(T), 255>(&data[0]) == false) return std::weak_ordering::less;
                     return unsigned_compare<sizeof(T)>(&data[0], reinterpret_cast<const uint8_t*>(&other));
                 } else {//bigInt is NOT negative                    
-                    if(other < 0) return std::weak_ordering::greater;//other is negative
+                    if (other < 0) return std::weak_ordering::greater;//other is negative
                     //other is NOT negative(both same sign) => can use unsigned comparison
-                    if(all_is_same<uint8_t, sz, sizeof(T), 0>(&data[0]) == false) return std::weak_ordering::greater;
+                    if (all_is_same<uint8_t, sz, sizeof(T), 0>(&data[0]) == false) return std::weak_ordering::greater;
                     return unsigned_compare<sizeof(T)>(&data[0], reinterpret_cast<const uint8_t*>(&other));
                 }
             }
@@ -812,41 +701,41 @@ struct bigInt {
 
     template<size_t other_sz>
     std::weak_ordering operator<=>(const bigInt<other_sz>& other) const& {
-        #ifdef ENABLE_LOGGING
-        std::cout << "bigInt<" << sz <<">.operator<=> with bigInt<" << other_sz <<"> is called!\n";
-        #endif        
-        if constexpr (sz > other_sz){
-            if(number.getSign()){//bigInt is negative
-                if(other.number.getSign() == false) return std::weak_ordering::less;
-                if(all_is_same<uint8_t, sz, other_sz, 255>(&data[0]) == false) return std::weak_ordering::less;
+#ifdef ENABLE_LOGGING
+        std::cout << "bigInt<" << sz << ">.operator<=> with bigInt<" << other_sz << "> is called!\n";
+#endif        
+        if constexpr (sz > other_sz) {
+            if (number.getSign()) {//bigInt is negative
+                if (other.number.getSign() == false) return std::weak_ordering::less;
+                if (all_is_same<uint8_t, sz, other_sz, 255>(&data[0]) == false) return std::weak_ordering::less;
                 return unsigned_compare<other_sz>(&data[0], &other.data[0]);
             } else {//bigInt is NOT negative
-                if(other.number.getSign()) return std::weak_ordering::greater;
-                if(all_is_same<uint8_t, sz, other_sz, 0>(&data[0]) == false) return std::weak_ordering::greater;
+                if (other.number.getSign()) return std::weak_ordering::greater;
+                if (all_is_same<uint8_t, sz, other_sz, 0>(&data[0]) == false) return std::weak_ordering::greater;
                 return unsigned_compare<other_sz>(&data[0], &other.data[0]);
             }
         } else {//sz < other_sz
-            if(number.getSign()){//bigInt is negative
-                if(other.number.getSign() == false) return std::weak_ordering::less;
-                if(all_is_same<uint8_t, other_sz, sz, 255>(&other.data[0]) == false) return std::weak_ordering::greater;
+            if (number.getSign()) {//bigInt is negative
+                if (other.number.getSign() == false) return std::weak_ordering::less;
+                if (all_is_same<uint8_t, other_sz, sz, 255>(&other.data[0]) == false) return std::weak_ordering::greater;
                 return unsigned_compare<sz>(&data[0], &other.data[0]);
             } else {//bigInt is NOT negative
-                if(other.number.getSign()) return std::weak_ordering::greater;
-                if(all_is_same<uint8_t, other_sz, sz, 0>(&other.data[0]) == false) return std::weak_ordering::less;
+                if (other.number.getSign()) return std::weak_ordering::greater;
+                if (all_is_same<uint8_t, other_sz, sz, 0>(&other.data[0]) == false) return std::weak_ordering::less;
                 return unsigned_compare<sz>(&data[0], &other.data[0]);
             }
         }
     }
 
     std::weak_ordering operator<=>(const bigInt& other) const& {
-        #ifdef ENABLE_LOGGING
-        std::cout << "operator< with bigInt same size!\n";   
-        #endif 
-        if(number.getSign()){//this is negative
-            if(other.number.getSign() == false) return std::weak_ordering::less;//if other is NOT negative return true
+#ifdef ENABLE_LOGGING
+        std::cout << "operator< with bigInt same size!\n";
+#endif 
+        if (number.getSign()) {//this is negative
+            if (other.number.getSign() == false) return std::weak_ordering::less;//if other is NOT negative return true
             return unsigned_compare<sz>(&data[0], &other.data[0]);
         } else {//bigInt is NOT negative
-            if(other.number.getSign()) return std::weak_ordering::greater;//if other is negative return true
+            if (other.number.getSign()) return std::weak_ordering::greater;//if other is negative return true
             return unsigned_compare<sz>(&data[0], &other.data[0]);
         }
     }
@@ -854,35 +743,35 @@ struct bigInt {
 
 
     template<typename T>
-    requires (std::is_integral_v<T>)
+        requires (std::is_integral_v<T>)
     bool operator==(const T& other) const& {
-        #ifdef ENABLE_LOGGING
+#ifdef ENABLE_LOGGING
         std::cout << "bigInt<" << sz << ">::operator== with integer sizeof(T) = " << sizeof(T) << "!\n";
-        #endif
+#endif
 
         if constexpr (sz == sizeof(T)) {
             return reinterpret_cast<T&>(data[0]) == other;
-        } else if (sz < sizeof(T)){
-            if constexpr(!std::is_same_v<size_to_int_t<sz>, void>){
-                return (reinterpret_cast<size_to_int_t<sz>&>(data[0]) == other);
+        } else if (sz < sizeof(T)) {
+            if constexpr (!std::is_same_v<size_to_int_t<sz>, void>) {
+                return (reinterpret_cast<size_to_int_t<sz>&>(data[0]) == reinterpret_cast<const std::make_signed_t<T>&>(other));
             } else {
-                using u_T =  std::make_unsigned_t<T>;
+                using u_T = std::make_unsigned_t<T>;
                 constexpr u_T u_T_max = std::numeric_limits<u_T>::max();
 
                 std::make_signed_t<T> extend = number.getSign() ? u_T_max : 0;//signed/unsigned extention
-                memcpy(reinterpret_cast<unsigned char*>(&extend), &data[0], sz);
+                std::memcpy(reinterpret_cast<unsigned char*>(&extend), &data[0], sz);
                 return (extend == other);
-            } 
+            }
         } else {//sz > sizeof(T)
             if constexpr (std::is_unsigned_v<T>) {
-                if(all_is_same<uint8_t, sz, sizeof(T), 0>(&data[0]) == false) return false;
+                if (all_is_same<uint8_t, sz, sizeof(T), 0>(&data[0]) == false) return false;
                 return all_is_same<sizeof(T), 0>(&data[0], reinterpret_cast<const uint8_t*>(&other));
             } else {
-                if(other < 0){
-                    if(all_is_same<uint8_t, sz, sizeof(T), 255>(&data[0]) == false) return false;
+                if (other < 0) {
+                    if (all_is_same<uint8_t, sz, sizeof(T), 255>(&data[0]) == false) return false;
                     return all_is_same<sizeof(T), 0>(&data[0], reinterpret_cast<const uint8_t*>(&other));
                 } else {
-                    if(all_is_same<uint8_t, sz, sizeof(T), 0>(&data[0]) == false) return false;
+                    if (all_is_same<uint8_t, sz, sizeof(T), 0>(&data[0]) == false) return false;
                     return all_is_same<sizeof(T), 0>(&data[0], reinterpret_cast<const uint8_t*>(&other));
                 }
             }
@@ -891,23 +780,23 @@ struct bigInt {
 
     template<size_t other_sz>
     bool operator==(const bigInt<other_sz>& other) const& {
-        #ifdef ENABLE_LOGGING
-        std::cout << "bigInt<" << sz <<">.operator== with bigInt<" << other_sz <<"> is called!\n";
-        #endif     
+#ifdef ENABLE_LOGGING
+        std::cout << "bigInt<" << sz << ">.operator== with bigInt<" << other_sz << "> is called!\n";
+#endif     
 
-        if constexpr (sz > other_sz){
-            if(other.number.getSign()){
-                if(all_is_same<uint8_t, sz, other_sz, 255>(&data[0]) == false) return false;
+        if constexpr (sz > other_sz) {
+            if (other.number.getSign()) {
+                if (all_is_same<uint8_t, sz, other_sz, 255>(&data[0]) == false) return false;
             } else {
-                if(all_is_same<uint8_t, sz, other_sz, 0>(&data[0]) == false) return false;
+                if (all_is_same<uint8_t, sz, other_sz, 0>(&data[0]) == false) return false;
             }
 
             return all_is_same<other_sz, 0>(&data[0], &other.data[0]);
         } else {//sz < other_sz
-            if(number.getSign()){
-                if(all_is_same<uint8_t, other_sz, sz, 255>(&other.data[0]) == false) return false;
+            if (number.getSign()) {
+                if (all_is_same<uint8_t, other_sz, sz, 255>(&other.data[0]) == false) return false;
             } else {
-                if(all_is_same<uint8_t, other_sz, sz, 0>(&other.data[0]) == false) return false;
+                if (all_is_same<uint8_t, other_sz, sz, 0>(&other.data[0]) == false) return false;
             }
 
             return all_is_same<sz, 0>(&data[0], &other.data[0]);
@@ -915,9 +804,9 @@ struct bigInt {
     }
 
     bool operator==(const bigInt& other) const& {
-        #ifdef ENABLE_LOGGING
+#ifdef ENABLE_LOGGING
         std::cout << "bigInt<" << sz << ">::operator== with bigInt same size!\n";
-        #endif 
+#endif 
 
         return all_is_same<sz, 0>(&data[0], &other.data[0]);
     }
@@ -925,159 +814,166 @@ struct bigInt {
 
 
     template<typename T>
-    requires (std::is_integral_v<T>)
+        requires (std::is_integral_v<T>)
     bool operator!=(const T& other) const& {
-        #ifdef ENABLE_LOGGING
+#ifdef ENABLE_LOGGING
         std::cout << "bigInt<" << sz << ">::operator!= with integer sizeof(T) = " << sizeof(T) << "!\n";
-        #endif
-        
+#endif
+
         return !(*this == other);
     }
 
     template<size_t other_sz>
     bool operator!=(const bigInt<other_sz>& other) const& {
-        #ifdef ENABLE_LOGGING
-        std::cout << "bigInt<" << sz <<">.operator!= with bigInt<" << other_sz <<"> is called!\n";
-        #endif        
-        
+#ifdef ENABLE_LOGGING
+        std::cout << "bigInt<" << sz << ">.operator!= with bigInt<" << other_sz << "> is called!\n";
+#endif        
+
         return !(*this == other);
     }
 
     bool operator!=(const bigInt& other) const& {
-        #ifdef ENABLE_LOGGING
+#ifdef ENABLE_LOGGING
         std::cout << "bigInt<" << sz << ">::operator!= with bigInt same size!\n";
-        #endif 
+#endif 
 
         return !(*this == other);
     }
 
 
+    
+    bool signbit() const& {
+        return number.getSign();
+    }
+
 
     ~bigInt() {
         std::string str = std::to_string(reinterpret_cast<uint64_t&>(data[0]));
-        while(str.size() < 20){
+        while (str.size() < 20) {
             str.push_back(' ');
         }
-        #ifdef ENABLE_LOGGING
+#ifdef ENABLE_LOGGING
         std::cout << "| deleted with size: " << sz << " | with value: " << str << " |\n";
-        #endif
+#endif
     }
 };
 
 template <size_t sz>
-std::ostream& operator<<(std::ostream& os, const bigInt<sz>& b){
-    unsigned char (&data)[sz] = b.data;
-    size_to_int_t<sz> res = data[0];
-    for(size_t i = 1; i < sz; ++i){
-        res += static_cast<size_to_int_t<sz>>(data[i]) << (8 * i);
+std::ostream& operator<<(std::ostream& os, const bigInt<sz>& b) {
+    auto data = b.data;
+    int64_t res = data[0];
+    for (size_t i = 1; i < sz; ++i) {
+        res += static_cast<int64_t>(data[i]) << (8 * i);
     }
     os << res;
     return os;
 }
 
 template<size_t sz>
-bigInt<sz> operator+(const bigInt<sz>& bi_1, const bigInt<sz>& bi_2){
+bigInt<sz> operator+(const bigInt<sz>& bi_1, const bigInt<sz>& bi_2) {
     bigInt<sz> res(bi_1);
     res += bi_2;
-    #ifdef ENABLE_LOGGING    
+#ifdef ENABLE_LOGGING    
     std::cout << "plus between bigInt and bigInt with same size outside struct!\n";
-    #endif 
+#endif 
     return res;//return value optimization
-} 
+}
 
 template<size_t sz_1, size_t sz_2>
-bigInt<sz_1> operator+(const bigInt<sz_1>& bi_1, const bigInt<sz_2>& bi_2){
+bigInt<sz_1> operator+(const bigInt<sz_1>& bi_1, const bigInt<sz_2>& bi_2) {
     bigInt<sz_1> res(bi_1);
     res += bi_2;
-    #ifdef ENABLE_LOGGING
+#ifdef ENABLE_LOGGING
     std::cout << "plus between bigInt and bigInt outside struct!\n";
-    #endif 
+#endif 
     return res;
-} 
+}
 
 template<typename T, size_t sz>
-requires(std::is_integral_v<std::remove_cvref_t<T>>)
-bigInt<sz> operator+(const bigInt<sz>& bi, T other){
+    requires(std::is_integral_v<std::remove_cvref_t<T>>)
+bigInt<sz> operator+(const bigInt<sz>& bi, T other) {
     bigInt<sz> res(bi);
     res += other;
-    #ifdef ENABLE_LOGGING
+#ifdef ENABLE_LOGGING
     std::cout << "plus between bigInt and integer outside struct!\n";
-    #endif 
+#endif 
     return res;
-} 
+}
 
 template<typename T, size_t sz>
-requires(std::is_integral_v<std::remove_cvref_t<T>>)
-bigInt<sz> operator+(T other, const bigInt<sz>& bi){
+    requires(std::is_integral_v<std::remove_cvref_t<T>>)
+bigInt<sz> operator+(T other, const bigInt<sz>& bi) {
     bigInt<sz> res(bi);
     res += other;
-    #ifdef ENABLE_LOGGING
+#ifdef ENABLE_LOGGING
     std::cout << "plus between integer and bigInt outside struct!\n";
-    #endif 
+#endif 
     return res;
-} 
+}
+
+
 
 template<size_t sz>
-bigInt<sz> operator-(const bigInt<sz>& bi_1, const bigInt<sz>& bi_2){
+bigInt<sz> operator-(const bigInt<sz>& bi_1, const bigInt<sz>& bi_2) {
     bigInt<sz>  res(bi_1);
     res -= bi_2;
-    #ifdef ENABLE_LOGGING
+#ifdef ENABLE_LOGGING
     std::cout << "minus between bigInt and bigInt with same size outside struct!\n";
-    #endif 
+#endif 
     return res;
-} 
+}
 
 template<size_t sz_1, size_t sz_2>
-bigInt<sz_1> operator-(const bigInt<sz_1>& bi_1, const bigInt<sz_2>& bi_2){
+bigInt<sz_1> operator-(const bigInt<sz_1>& bi_1, const bigInt<sz_2>& bi_2) {
     bigInt<sz_1> res(bi_1);
     res -= bi_2;
-    #ifdef ENABLE_LOGGING
+#ifdef ENABLE_LOGGING
     std::cout << "minus between bigInt and bigInt outside struct!\n";
-    #endif 
+#endif 
     return res;
-} 
+}
 
 template<typename T, size_t sz>
-requires(std::is_integral_v<std::remove_cvref_t<T>>)
-bigInt<sz> operator-(const bigInt<sz>& bi, T other){
+    requires(std::is_integral_v<std::remove_cvref_t<T>>)
+bigInt<sz> operator-(const bigInt<sz>& bi, T other) {
     bigInt<sz> res(bi);
     res -= other;
-    #ifdef ENABLE_LOGGING
+#ifdef ENABLE_LOGGING
     std::cout << "minus between bigInt and integer outside struct!\n";
-    #endif 
+#endif 
     return res;
-} 
+}
 
 template<typename T, size_t sz>
-requires(std::is_integral_v<std::remove_cvref_t<T>>)
-bigInt<sz> operator-(T other, const bigInt<sz>& bi){
+    requires(std::is_integral_v<std::remove_cvref_t<T>>)
+bigInt<sz> operator-(T other, const bigInt<sz>& bi) {
     bigInt<sz> res(bi);
     res -= other;
-    #ifdef ENABLE_LOGGING
+#ifdef ENABLE_LOGGING
     std::cout << "minus between integer and bigInt outside struct!\n";
-    #endif 
+#endif 
     return res;
-} 
+}
 
 
 
 template<typename T, size_t sz>
-requires (std::is_integral_v<T>)
+    requires (std::is_integral_v<T>)
 bool operator==(T other, const bigInt<sz>& bi) {
-    #ifdef ENABLE_LOGGING
+#ifdef ENABLE_LOGGING
     std::cout << "operator== integer sizeof(T) = " << sizeof(T) << " with bigInt<" << sz << ">!\n";
-    #endif
+#endif
 
     return (bi == other);
 }
 
 
 template<typename T, size_t sz>
-requires (std::is_integral_v<T>)
+    requires (std::is_integral_v<T>)
 bool operator!=(T other, const bigInt<sz>& bi) {
-    #ifdef ENABLE_LOGGING
+#ifdef ENABLE_LOGGING
     std::cout << "operator!= integer sizeof(T) = " << sizeof(T) << " with bigInt<" << sz << ">!\n";
-    #endif
-    
+#endif
+
     return !(bi == other);
 }

@@ -11,9 +11,8 @@
 #include <vector>
 #include <bitset>
 
-#include "smns/bigInt.hpp"
-#include "smns/Helpers.hpp"
-#include "smns/string.h"
+#include "smns/math/types/bigInt.hpp"
+#include "smns/types/string.h"
 #include "smns/study.hpp"
 
 // #define LOG
@@ -151,6 +150,9 @@ void heapSort(std::vector<int>& arr) {
 }
 
 int main() {
+  
+  std::cout << '\n';
+  system("pause");
   {
     std::random_device rd;
     std::mt19937_64 rng(rd());

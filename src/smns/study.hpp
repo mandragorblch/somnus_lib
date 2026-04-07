@@ -1,5 +1,6 @@
 #pragma once
 #include <algorithm>
+#include "algorithm.hpp"
 
 namespace study {
   template <typename number_t, size_t sz>
@@ -12,7 +13,7 @@ namespace study {
     return arr[sz - n];
   }
 
-  // pivot - arr[end]. just swap your pivot with it. trust me, i'm a possum!
+  // pivot - arr[end]. just swap your pivot with it. trust me, i'm an otter!
   template <typename number_t, size_t sz>
   size_t partition(std::array<number_t, sz> & arr, size_t begin = 0,
                    size_t end = sz - 1) {
@@ -62,7 +63,7 @@ namespace study {
   number_t find_nth_biggest_faster(std::array<number_t, sz> & arr, size_t n,
                                    size_t begin = 0, size_t end = sz - 1) {
     auto curr = (end + begin) / 2;
-    smns::algos::sort_3(arr[begin], arr[curr], arr[end]);
+    smns::algorithm::math::sort_3(arr[begin], arr[curr], arr[end]);
     std::swap(arr[curr], arr[end]);
     curr = partition(arr, begin, end);
     if (curr == n)

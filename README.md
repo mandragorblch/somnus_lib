@@ -1,2 +1,2 @@
 # somnus_lib
- somnus data types and etc
+ contains data types, algorithms, math functions, etc
